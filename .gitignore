@@ -19,3 +19,12 @@
 
 # Go workspace file
 go.work
+
+# VS Code workspace folder
+.vscode
+
+# Env files
+.env
+
+# Log files
+*.log
