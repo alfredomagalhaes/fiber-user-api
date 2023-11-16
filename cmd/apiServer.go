@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/alfredomagalhaes/fiber-user-api/repositories"
 	"github.com/alfredomagalhaes/fiber-user-api/routes"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -26,7 +27,7 @@ var apiServerCmd = &cobra.Command{
 	Long: `Run an API server to expose users endpoints to validate
 	the integration with AWS Cognito to authorize the application`,
 	Run: func(cmd *cobra.Command, args []string) {
-
+		var repoConfig repositories.MySqlRepoConfig
 		//Load env file
 		if err := godotenv.Load(".env"); err != nil {
 			log.Fatal("No .env file found")
@@ -39,6 +40,16 @@ var apiServerCmd = &cobra.Command{
 		}
 
 		log.SetOutput(file)
+		repoConfig.Host = os.Getenv("DB_HOST")
+		repoConfig.Port = os.Getenv("DB_PORT")
+		repoConfig.User = os.Getenv("DB_USER")
+		repoConfig.Pwd = os.Getenv("DB_PASSWORD")
+		repoConfig.DbName = os.Getenv("DB_NAME")
+		repo, err := repositories.NewMySqlRepository(repoConfig)
+
+		if err != nil {
+			log.Fatalf("error while initializing database connection...\n%v", err)
+		}
 
 		//--
 		//Initialize the fiber application
@@ -48,7 +59,7 @@ var apiServerCmd = &cobra.Command{
 			Output: file,
 		}))
 
-		initializeRoutes(app)
+		initializeRoutes(app, repo)
 
 		go func() {
 			runPort := fmt.Sprintf(":%d", apiPort)
@@ -78,7 +89,7 @@ func init() {
 	apiServerCmd.Flags().IntVarP(&apiPort, "apiPort", "p", 3000, "define the port that the application will run")
 }
 
-func initializeRoutes(app *fiber.App) {
+func initializeRoutes(app *fiber.App, repo repositories.UserRepository) {
 
 	// give response when at /
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -92,4 +103,5 @@ func initializeRoutes(app *fiber.App) {
 	apiV1 := app.Group("/api/v1")
 
 	routes.LoginRoutes(apiV1)
+	routes.UserRoutes(apiV1, repo)
 }
