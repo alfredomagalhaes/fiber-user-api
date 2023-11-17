@@ -28,3 +28,6 @@ go.work
 
 # Log files
 *.log
+
+# Seeds folder
+seeds/

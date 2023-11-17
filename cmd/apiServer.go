@@ -10,8 +10,13 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/alfredomagalhaes/fiber-user-api/middlewares"
 	"github.com/alfredomagalhaes/fiber-user-api/repositories"
 	"github.com/alfredomagalhaes/fiber-user-api/routes"
+	"github.com/alfredomagalhaes/fiber-user-api/types"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	cognito "github.com/aws/aws-sdk-go/service/cognitoidentityprovider"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
@@ -52,6 +57,19 @@ var apiServerCmd = &cobra.Command{
 		}
 
 		//--
+		//Initialize AWS session
+		//--
+		awsConf := &aws.Config{Region: aws.String(os.Getenv("AWS_REGION"))}
+		myAwsSession := session.Must(session.NewSession(awsConf))
+
+		cognitoConf := types.CognitoConfig{
+			Client:       cognito.New(myAwsSession),
+			UserPoolID:   os.Getenv("COGNITO_USER_POOL_ID"),
+			ClientID:     os.Getenv("OIDC_CLIENT_ID"),
+			ClientSecret: os.Getenv("OIDC_CLIENT_SECRET"),
+		}
+
+		//--
 		//Initialize the fiber application
 		//--
 		app := fiber.New()
@@ -59,7 +77,7 @@ var apiServerCmd = &cobra.Command{
 			Output: file,
 		}))
 
-		initializeRoutes(app, repo)
+		initializeRoutes(app, repo, cognitoConf)
 
 		go func() {
 			runPort := fmt.Sprintf(":%d", apiPort)
@@ -89,7 +107,7 @@ func init() {
 	apiServerCmd.Flags().IntVarP(&apiPort, "apiPort", "p", 3000, "define the port that the application will run")
 }
 
-func initializeRoutes(app *fiber.App, repo repositories.UserRepository) {
+func initializeRoutes(app *fiber.App, repo repositories.UserRepository, cngCfg types.CognitoConfig) {
 
 	// give response when at /
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -102,6 +120,9 @@ func initializeRoutes(app *fiber.App, repo repositories.UserRepository) {
 	//Create a group to version the api
 	apiV1 := app.Group("/api/v1")
 
-	routes.LoginRoutes(apiV1)
+	routes.LoginRoutes(apiV1, cngCfg)
+
+	//All routes from down bellow will be authenticated
+	apiV1.Use(middlewares.AuthUser())
 	routes.UserRoutes(apiV1, repo)
 }
